@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Setup</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #eef1f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .setup-container { background: #ffffff; padding: 40px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); width: 100%; max-width: 600px; text-align: center; }
+        h1 { color: #007bff; margin-bottom: 20px; font-weight: 600; }
+        .progress-bar { display: flex; justify-content: space-between; margin-bottom: 30px; }
+        .progress-step { flex: 1; text-align: center; padding: 10px 0; border-bottom: 3px solid #ccc; color: #999; font-weight: 500; position: relative; cursor: default; }
+        .progress-step.active { border-color: #007bff; color: #007bff; }
+        .progress-step.done { border-color: #28a745; color: #28a745; }
+        .step-content { text-align: left; margin-top: 20px; }
+        
+        /* Input and Selection Styles */
+        label { display: block; margin-top: 15px; margin-bottom: 8px; font-weight: bold; color: #333; font-size: 1.1em; }
+        input[type="text"] { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; transition: border-color 0.3s; }
+        input[type="text"]:focus { border-color: #007bff; outline: none; box-shadow: 0 0 5px rgba(0, 123, 255, 0.2); }
+        
+        /* Choice Button Styles */
+        .choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .choice-button { background-color: #f8f9fa; color: #495057; padding: 15px 10px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; text-align: center; font-weight: 500; transition: all 0.2s; }
+        .choice-button:hover { background-color: #e9ecef; border-color: #007bff; }
+        .choice-button.selected { background-color: #007bff; color: white; border-color: #007bff; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3); }
+
+        /* Navigation Button Styles */
+        .nav-buttons { text-align: center; margin-top: 30px; }
+        .nav-button { background-color: #28a745; color: white; padding: 12px 25px; border: none; border-radius: 8px; cursor: pointer; font-size: 18px; transition: background-color 0.3s ease; }
+        .nav-button:hover { background-color: #1e7e34; }
+        .nav-button:disabled { background-color: #adb5bd; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <h1>AI Interview Simulator Setup</h1>
+        
+        <div class="progress-bar">
+            <div class="progress-step {% if step >= 1 %}active{% endif %} {% if step > 1 %}done{% endif %}">1. Domain</div>
+            <div class="progress-step {% if step >= 2 %}active{% endif %} {% if step > 2 %}done{% endif %}">2. Role & Level</div>
+            <div class="progress-step {% if step == 3 %}active{% endif %}">3. Interview Type</div>
+        </div>
+
+        <form method="POST">
+            {% if step == 1 %}
+            <input type="hidden" name="step" value="1">
+            <div class="step-content">
+                <label>🌐 Select Interview Domain (8 Choices)</label>
+                <div class="choice-grid">
+                    {% for domain in domains.keys() %}
+                    <button type="submit" name="domain" value="{{ domain }}" class="choice-button">{{ domain }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            {% elif step == 2 %}
+            <input type="hidden" name="step" value="2">
+            <div class="step-content">
+                <h2>Domain Selected: {{ current_domain }}</h2>
+                <label for="role">Job Role (e.g., {{ domains[current_domain][0] }}):</label>
+                <input type="text" id="role" name="role" placeholder="Enter specific role" required value="{{ domains[current_domain][0] }}">
+                
+                <label for="level">Job Level:</label>
+                <input type="text" id="level" name="level" placeholder="e.g., Mid-Level, Entry Level" required value="Entry Level">
+                
+                <div class="nav-buttons">
+                    <button type="submit" class="nav-button">Next: Select Interview Type</button>
+                </div>
+            </div>
+
+            {% elif step == 3 %}
+            <input type="hidden" name="step" value="3">
+            <div class="step-content">
+                <label>🧠 Select Interview Focus</label>
+                <div class="choice-grid">
+                    {% for type in interview_types %}
+                    <button type="button" class="choice-button" data-type="{{ type }}" onclick="selectType(this)">{{ type }}</button>
+                    {% endfor %}
+                </div>
+                
+                <input type="hidden" id="interview_type_input" name="interview_type" required>
+
+                <div class="nav-buttons">
+                    <button type="submit" id="start-interview-button" class="nav-button" disabled>Start Interview</button>
+                </div>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+
+    <script>
+        // JavaScript for Step 3 to handle selection logic
+        function selectType(button) {
+            const buttons = document.querySelectorAll('.choice-button');
+            const typeInput = document.getElementById('interview_type_input');
+            const startButton = document.getElementById('start-interview-button');
+
+            // Deselect all buttons
+            buttons.forEach(btn => btn.classList.remove('selected'));
+
+            // Select the clicked button
+            button.classList.add('selected');
+            
+            // Set the hidden input value
+            typeInput.value = button.getAttribute('data-type');
+            
+            // Enable the Start button
+            startButton.disabled = false;
+        }
+    </script>
+</body>
+</html>

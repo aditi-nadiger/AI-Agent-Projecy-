@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Partner (Voice Enabled)</title>
+
+
+
+    <style>
+    /* Base CSS (Kept from your original) */
+    body { font-family: sans-serif; background-color: #f4f7ff; margin: 0; display: flex; justify-content: center; }
+    .chat-container { width: 100%; max-width: 800px; background: #ffffff; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; min-height: 100vh; }
+    .header { background-color: #1e88e5; color: white; padding: 15px; text-align: center; font-size: 1.2em; border-bottom: 4px solid #1565c0; }
+    .chat-box { flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
+    .message { margin-bottom: 15px; padding: 10px 15px; border-radius: 18px; max-width: 85%; line-height: 1.6; word-wrap: break-word; }
+    .interviewer { background-color: #e0f7fa; color: #00796b; align-self: flex-start; border-bottom-left-radius: 2px; }
+    .candidate { background-color: #e3f2fd; color: #1e88e5; align-self: flex-end; border-bottom-right-radius: 2px; }
+    
+    /* --- MODIFIED FEEDBACK STYLE: NAVY BLUE THEME --- */
+    .system { 
+        background-color: #1a1a2e; /* Deep Navy Background */
+        color: #e3f2fd; /* Very Light Blue/White Text */
+        align-self: center; 
+        text-align: left; /* Ensure report content aligns left */
+        border-radius: 8px; 
+        border: 2px solid #007bff; /* Bright Blue Border */
+        width: 90%; 
+        margin: 20px auto;
+        padding: 20px; 
+    }
+    .system h2, .system h3 {
+        color: #82b1ff; /* Light, bright blue for headings */
+        margin-top: 15px;
+        margin-bottom: 5px;
+        border-bottom: 1px solid #007bff;
+        padding-bottom: 3px;
+    }
+    .system hr {
+        border-top: 1px solid #4a90e2; /* Light blue divider */
+    }
+    /* --- END MODIFIED FEEDBACK STYLE --- */
+
+    .input-area { padding: 15px; border-top: 1px solid #eee; background: #fff; display: flex; align-items: center; }
+    #user-input { flex-grow: 1; padding: 12px; border: 1px solid #ccc; border-radius: 20px; margin-right: 10px; font-size: 16px; }
+    #send-button { background-color: #4caf50; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-size: 16px; transition: background-color 0.3s; }
+    #send-button:hover { background-color: #388e3c; }
+    #send-button:disabled { background-color: #b0b0b0; cursor: not-allowed; }
+    .loading { text-align: center; padding: 10px; color: #777; font-style: italic; }
+    .end-interview-button { background-color: #f44336; margin-left: 10px; }
+    .end-interview-button:hover { background-color: #d32f2f; }
+    
+    /* New style for the play button */
+    #play-first-question {
+        background-color: #f5f5f5;
+        color: #1e88e5;
+        border: 1px solid #1e88e5;
+        padding: 3px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 5px;
+        margin-left: 10px;
+        font-size: 0.8em;
+        display: inline-block;
+    }
+    /* New style for mic button */
+    #mic-button {
+        background-color: #1e88e5;
+        color: white;
+        border: none;
+        padding: 10px 12px;
+        border-radius: 50%; 
+        cursor: pointer;
+        font-size: 18px;
+        margin-right: 10px;
+        transition: background-color 0.3s, transform 0.1s;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    #mic-button:hover {
+        background-color: #1565c0;
+    }
+    #mic-button.recording {
+        background-color: #f44336; 
+        transform: scale(1.1);
+    }
+</style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">
+            🎙️ Mock Interview: {{ level }} {{ role }}
+        </div>
+        <div class="chat-box" id="chat-box">
+            {% for msg in history %}
+            <div class="message {{ msg.user | lower }}" 
+                 {% if loop.index == 1 and msg.user == 'Interviewer' %}id="initial-message"{% endif %}>
+                
+                {{ msg.text | safe }}
+                
+                {% if loop.index == 1 and msg.user == 'Interviewer' %}
+                <button id="play-first-question" onclick="speakFirstMessage()">🔊 Play</button>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <div class="loading" id="loading-indicator" style="display:none;">AI Interviewer is thinking...</div>
+        </div>
+
+        <div class="input-area">
+            <button id="mic-button" title="Speak your answer (Press and hold or tap)">🎤</button>
+            <input type="text" id="user-input" placeholder="Type or speak your answer (or 'END INTERVIEW')">
+            <button id="send-button" onclick="sendMessage()">Send</button>
+            <button id="end-interview-button" class="end-interview-button" onclick="endInterview()" {% if not active %}disabled{% endif %}>End</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Start of <script> tag ---
+
+        const chatBox = document.getElementById('chat-box');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const endButton = document.getElementById('end-interview-button');
+        const micButton = document.getElementById('mic-button');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        let interviewActive = {{ 'true' if active else 'false' }};
+        
+        // Voice variables
+        const synth = window.speechSynthesis;
+        let recognition = null;
+        let initialSpeechAttempted = false; // New flag to prevent multiple attempts
+
+        // --- UTILITY FUNCTIONS ---
+
+        function scrollToBottom() {
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function speak(text) {
+        if (!synth || !text) return; // Exit if browser doesn't support or no text
+
+        // --- CRITICAL JAVASCRIPT CLEANING FIX ---
+        let cleanedText = text;
+        
+        // 1. Define noise phrases to remove
+        const noisePhrases = ["speaker high volume play", "speaker high volume", "high volume play"];
+        
+        // 2. Remove noise using a case-insensitive regular expression
+        const noisePattern = new RegExp(noisePhrases.join("|"), "gi");
+        cleanedText = cleanedText.replace(noisePattern, "").trim();
+
+        // 3. Remove any remaining non-standard ASCII characters that might be confusing the TTS
+        // This is a common method for eliminating hidden control characters in JS.
+        cleanedText = cleanedText.replace(/[^\x20-\x7E]/g, '');
+
+        // 4. Ensure there's a minimum amount of text left to speak
+        if (cleanedText.length < 5) {
+            console.warn("TTS blocked: Text too short after cleaning.");
+            return;
+        }
+        // -----------------------------------------
+
+        // Stop any currently speaking utterance
+        if (synth.speaking) synth.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(cleanedText); // Use the cleaned text
+        utterance.rate = 1.0; 
+        utterance.pitch = 1.0; 
+        
+        const voices = synth.getVoices();
+        utterance.voice = voices.find(v => v.lang === 'en-US' && v.name.includes('Google') || v.default); 
+
+        synth.speak(utterance);
+        }
+        
+
+        function addMessage(user, text, speak_text = false) {
+            // ... (Keep the rest of the addMessage function the same)
+            const messageDiv = document.createElement('div');
+            // Basic Markdown to HTML conversion for feedback
+            // let formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            // formattedText = formattedText.replace(/\n\n/g, '<p></p>').replace(/\n/g, '<br>');
+            
+            // messageDiv.className = `message ${user.toLowerCase()}`;
+            // messageDiv.innerHTML = formattedText;
+            // chatBox.appendChild(messageDiv);
+            // scrollToBottom();
+
+            let formattedText = text;
+            
+            // --- START MARKDOWN TO HTML CONVERSION ---
+
+            // 1. Convert Headings (CRITICAL)
+            formattedText = formattedText.replace(/^### (.*)$/gm, '<h3>$1</h3>');
+            formattedText = formattedText.replace(/^## (.*)$/gm, '<h2>$1</h2>');
+            
+            // 2. Convert Horizontal Rules
+            formattedText = formattedText.replace(/---/g, '<hr>');
+
+            // 3. Convert Bold/Strong text
+            formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // 4. Convert List Items (CRITICAL)
+            // Replace markdown list items (* or - followed by a space) with <li> tags
+            formattedText = formattedText.replace(/^\* (.*)$/gm, '<li>$1</li>');
+            
+            // 5. Wrap List Items in <ul> tags
+            // This requires a more complex regex/manual check, but a simple line break replacement helps:
+            formattedText = formattedText.replace(/<\/li>\n/g, '</li>'); 
+            
+            // 6. Replace multiple newlines with paragraph breaks, but be careful not to wrap lists
+            formattedText = formattedText.replace(/\n\n/g, '<p></p>');
+
+            // 7. Ensure <br> or a space is between list items and paragraphs
+            formattedText = formattedText.replace(/\n/g, '<br>');
+            
+            // --- END MARKDOWN TO HTML CONVERSION ---
+
+            messageDiv.className = `message ${user.toLowerCase()}`;
+            // --- CRITICAL LINE: Use innerHTML to render the formatting ---
+            messageDiv.innerHTML = formattedText;
+            // -------------------------------------------------------------
+            
+            chatBox.appendChild(messageDiv);
+            scrollToBottom();
+
+            // Speak the text if requested (only for the Interviewer)
+            if (speak_text && user === 'Interviewer' && interviewActive) {
+                speak(text);
+            }
+        }
+        // --- NEW FUNCTION TO TRIGGER VOICE VIA USER INTERACTION ---
+        function speakFirstMessage() {
+            const messageElement = document.getElementById('initial-message');
+            const buttonElement = document.getElementById('play-first-question');
+            if (messageElement && buttonElement) {
+                // Speak the text content
+                speak(messageElement.textContent);
+                // Hide the button after use
+                buttonElement.style.display = 'none';
+            }
+        }
+
+        // --- SPEECH RECOGNITION (MIC) LOGIC ---
+        
+        // ... (Keep the Speech Recognition code exactly the same as before)
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false; 
+            recognition.interimResults = false; 
+            recognition.lang = 'en-US';
+
+            recognition.onstart = function() {
+                micButton.classList.add('recording');
+                micButton.title = 'Recording... Say "END INTERVIEW" to stop.';
+                userInput.placeholder = 'SPEAKING...';
+            };
+            // Inside the Speech Recognition Logic section
+
+            recognition.onresult = function(event) {
+                const finalTranscript = event.results[0][0].transcript;
+                
+                // --- START OF FIX ---
+                const lowerTranscript = finalTranscript.toLowerCase().trim();
+                
+                // Check for common recognition noise and ignore it
+                if (lowerTranscript === 'speaker high volume play' || 
+                    lowerTranscript === 'speaker high volume' || 
+                    lowerTranscript.length < 3) { // Ignore very short, likely noise inputs
+                    
+                    userInput.value = ''; // Clear the input field
+                    console.warn("Speech recognition ignored system noise.");
+                    return; // Exit the function, preventing the noise from being sent
+                }
+                // --- END OF FIX ---
+                
+                userInput.value = finalTranscript;
+            };
+
+
+            recognition.onerror = function(event) {
+                console.error('Speech recognition error:', event.error);
+                micButton.classList.remove('recording');
+                userInput.placeholder = 'Error or No speech detected.';
+                micButton.title = 'Speak your answer (Tap to start)';
+                if (!interviewActive) return;
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                endButton.disabled = false;
+            };
+
+            recognition.onend = function() {
+                micButton.classList.remove('recording');
+                micButton.title = 'Speak your answer (Tap to start)';
+                if (interviewActive) {
+                    userInput.placeholder = 'Type or speak your answer (or "END INTERVIEW")';
+                }
+
+                // CRITICAL CHANGE: Submit the message here, only if the user input field has text.
+                if (userInput.value.trim() !== '') {
+                    sendMessage();
+                }
+            };
+
+            micButton.onclick = function() {
+                if (interviewActive) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.warn('Recognition already started:', e);
+                    }
+                }
+            };
+            
+            // Add a long-press listener
+            let pressTimer;
+            micButton.addEventListener('mousedown', () => {
+                pressTimer = setTimeout(() => {
+                    if (interviewActive) recognition.start();
+                }, 500); 
+            });
+            micButton.addEventListener('mouseup', () => {
+                clearTimeout(pressTimer);
+            });
+
+        } else {
+            micButton.style.display = 'none';
+            userInput.placeholder = 'Speech input not supported in this browser.';
+        }
+        
+        // --- INTERVIEW CHAT LOGIC ---
+
+        async function sendMessage(end_command = false) {
+            // ... (Keep the rest of sendMessage function the same, it's correct)
+            let message = end_command ? 'END INTERVIEW' : userInput.value.trim();
+            userInput.value = '';
+
+            if (!message && !end_command) {
+                alert("Please type a message.");
+                return;
+            }
+            
+            if (synth.speaking) synth.cancel();
+
+            addMessage('Candidate', message);
+
+            userInput.disabled = true;
+            sendButton.disabled = true;
+            endButton.disabled = true;
+            micButton.disabled = true;
+            loadingIndicator.style.display = 'block';
+
+            try {
+                const response = await fetch('/send_message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    addMessage(data.is_feedback ? 'System' : 'Interviewer', data.response, !data.is_feedback);
+                    
+                    if (data.is_feedback) {
+                        interviewActive = false;
+                    }
+
+                } else {
+                    addMessage('System', `ERROR: ${data.error}`);
+                }
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                addMessage('System', 'An error occurred while communicating with the server.');
+            } finally {
+                loadingIndicator.style.display = 'none';
+                if (interviewActive) {
+                    userInput.disabled = false;
+                    sendButton.disabled = false;
+                    endButton.disabled = false;
+                    micButton.disabled = false;
+                    userInput.focus();
+                } else {
+                    userInput.placeholder = "Interview finished. Refresh to start a new one.";
+                    userInput.disabled = true;
+                    sendButton.disabled = true;
+                    endButton.disabled = true;
+                    micButton.disabled = true;
+                }
+            }
+        }
+
+        function endInterview() {
+            sendMessage(true);
+        }
+        // --- INITIALIZATION ---
+                
+        // 1. Scroll to the bottom on load
+        scrollToBottom();
+
+        // 2. No other voice initialization is needed, as the button handles the first message.
+
+        // 3. Allow sending message with Enter key
+        userInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter' && interviewActive && userInput.value.trim() !== '') {
+                sendMessage();
+            }
+        });
+
+
+    </script>
+</body>
+</html>
